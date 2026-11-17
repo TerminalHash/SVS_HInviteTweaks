@@ -100,8 +100,11 @@ namespace SVS_HInviteTweaks
 
                 if (id == 96)
                 {
-                    HInviteHooks.ClearBoost(actorIndex);
-                    Plugin.Info($"[HInvite] Selection {who} dir={dir}: vanilla already picked 96 (weight={weight:0.##}).");
+                    // The invite is already being selected; still let the target
+                    // hook supply a target, because the vanilla table is empty.
+                    HInviteHooks.MarkBoosted(actorIndex);
+                    Plugin.Info($"[HInvite] Selection {who} dir={dir}: vanilla already picked 96 " +
+                                $"(weight={weight:0.##}); target judgement applies.");
                     return raw;
                 }
 

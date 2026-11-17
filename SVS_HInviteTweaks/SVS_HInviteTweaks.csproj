@@ -6,11 +6,16 @@
 		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
+		<RestoreAdditionalProjectSources>
+			https://api.nuget.org/v3/index.json;
+			https://nuget.bepinex.dev/v3/index.json;
+			https://nuget.samboy.dev/v3/index.json
+		</RestoreAdditionalProjectSources>
 		<RootNamespace>SVS_HInviteTweaks</RootNamespace>
 		<AssemblyName>SVS_HInviteTweaks</AssemblyName>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.784" />
+		<PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.785" />
 		<PackageReference Include="UnityEngine.Modules" Version="6000.6.0-alpha.5" />
 		<PackageReference Include="IllusionLibs.SamabakeScramble.AllPackages" Version="*" />
 	</ItemGroup>

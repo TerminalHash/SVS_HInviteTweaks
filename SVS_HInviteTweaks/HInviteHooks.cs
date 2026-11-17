@@ -14,10 +14,10 @@ namespace SVS_HInviteTweaks
 
         private static Harmony? _harmony;
 
-        // Actors whose command-96 selection was forced and whose target call is
-        // still pending. Keyed by actor so an unrelated target call cannot
-        // consume the boost.
+        // Actors whose command-96 selection is pending a target call. Keyed by
+        // actor so an unrelated target call cannot consume the boost.
         private static readonly HashSet<int> BoostedActors = new();
+        private static readonly System.Random Rng = new();
 
         public static void PatchAll()
         {
@@ -106,37 +106,130 @@ namespace SVS_HInviteTweaks
                 string who = ActorLabel(_actor);
                 int rolled = __result;
 
+                if (Plugin.AggressiveVerbose) {
+                    int actorMap = -1;
+                    try { actorMap = _actor?.charaBase?._behaviourCtrl?.nowMapID ?? -1; } catch { }
+                    Plugin.DebugInfo($"[HInvite DEBUG] start actor={who} index={actorIndex} map={actorMap} rolled={rolled}");
+                }
+
                 var eligible = new List<(SaveData.Actor Actor, string Reason)>();
                 var seen = new HashSet<int>();
 
                 void Consider(SaveData.Actor? cand)
                 {
-                    if (cand == null) return;
+                    if (cand == null)
+                    {
+                        Plugin.DebugInfo("[HInvite DEBUG] consider null -> skip");
+                        return;
+                    }
                     int ci = cand.charasGameParam?.Index ?? -1;
-                    if (ci < 0 || ci == actorIndex) return;
-                    if (!seen.Add(ci)) return;
-                    if (TargetAllowed(_actor!, cand, out string candReason))
+                    if (ci < 0)
+                    {
+                        Plugin.DebugInfo($"[HInvite DEBUG] consider {ActorLabel(cand)} -> skip invalid index");
+                        return;
+                    }
+                    if (ci == actorIndex)
+                    {
+                        Plugin.DebugInfo($"[HInvite DEBUG] consider {ActorLabel(cand)} -> skip self");
+                        return;
+                    }
+                    if (!seen.Add(ci))
+                    {
+                        Plugin.DebugInfo($"[HInvite DEBUG] consider {ActorLabel(cand)} -> skip duplicate");
+                        return;
+                    }
+                    bool ok = TargetAllowed(_actor!, cand, out string candReason);
+                    Plugin.DebugInfo($"[HInvite DEBUG] consider {ActorLabel(cand)} -> {candReason}");
+                    if (ok)
                         eligible.Add((cand, candReason));
                 }
 
                 // Same candidate set as the vanilla reaction target picker
-                var sim = Manager.SimulationManager.Instance;
-                if (sim != null && _actor?.charaBase != null)
-                {
-                    var candidates = sim.GetWithMapCharactor(_actor.charaBase);
-                    if (candidates != null)
+                // fixed: check all characters, not only who on map with action initiator
+                var TargetType = Plugin.GetTargetType();
+                if (TargetType == Plugin.TargetingType.Fixed) {
+                    var sim = Manager.SimulationManager.Instance;
+                    Plugin.DebugInfo($"[HInvite DEBUG] source sim={(sim != null)} actorCharaBase={(_actor?.charaBase != null)}");
+
+                    if (sim != null && _actor?.charaBase != null)
                     {
-                        for (int i = 0; i < candidates.Count; i++)
+                        var candidates = __instance.interpersonalActionInfo?.actorIsNotCharacters;
+                        if (candidates != null)
                         {
-                            var ai = candidates[i];
-                            if (ai == null) continue;
-                            var aiCtrl = ai.BehaviourCtrl;
-                            if (aiCtrl == null) continue;
-                            var tree = aiCtrl.behaviorTreeCtrl;
-                            if (tree == null) continue;
-                            if ((int)tree.actionMode == 2) continue;
-                            if (SV.GameChara.IsDontTouch(ai.charaData)) continue;
-                            Consider(ai.charaData);
+                            for (int i = 0; i < candidates.Count; i++)
+                            {
+                                var ai = GameChara.FindCharaAI(candidates[i]);
+                                if (ai == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] null -> skip");
+                                    continue;
+                                }
+                                var aiCtrl = ai.BehaviourCtrl;
+                                if (aiCtrl == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} ctrl=null -> skip");
+                                    continue;
+                                }
+                                var tree = aiCtrl.behaviorTreeCtrl;
+                                if (tree == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} tree=null -> skip");
+                                    continue;
+                                }
+                                int candMode = (int)tree.actionMode;
+                                Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} map={aiCtrl.nowMapID} mode={candMode}");
+                                if (!Plugin.IgnoreTargetBusy && candMode == 2) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} -> skip actionMode=2");
+                                    continue;
+                                }
+                                bool dontTouch = SV.GameChara.IsDontTouch(ai.charaData);
+                                Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} dontTouch={dontTouch}");
+                                if (!Plugin.IgnoreTargetBusy && dontTouch) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} -> skip dontTouch");
+                                    continue;
+                                }
+                                Consider(ai.charaData);
+                            }
+                        }
+                    }
+                // vanilla: check only characters on map with action initiator
+                } else if (TargetType == Plugin.TargetingType.Vanilla) {
+                    var sim = Manager.SimulationManager.Instance;
+                    Plugin.DebugInfo($"[HInvite DEBUG] source sim={(sim != null)} actorCharaBase={(_actor?.charaBase != null)}");
+
+                    if (sim != null && _actor?.charaBase != null)
+                    {
+                        var candidates = sim.GetWithMapCharactor(_actor.charaBase);
+                        if (candidates != null)
+                        {
+                            for (int i = 0; i < candidates.Count; i++)
+                            {
+                                var ai = candidates[i];
+                                if (ai == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] null -> skip");
+                                    continue;
+                                }
+                                var aiCtrl = ai.BehaviourCtrl;
+                                if (aiCtrl == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} ctrl=null -> skip");
+                                    continue;
+                                }
+                                var tree = aiCtrl.behaviorTreeCtrl;
+                                if (tree == null) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} tree=null -> skip");
+                                    continue;
+                                }
+                                int candMode = (int)tree.actionMode;
+                                Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} map={aiCtrl.nowMapID} mode={candMode}");
+                                if (!Plugin.IgnoreTargetBusy && candMode == 2) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} -> skip actionMode=2");
+                                    continue;
+                                }
+                                bool dontTouch = SV.GameChara.IsDontTouch(ai.charaData);
+                                Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} dontTouch={dontTouch}");
+                                if (!Plugin.IgnoreTargetBusy && dontTouch) {
+                                    Plugin.DebugInfo($"[HInvite DEBUG] raw[{i}] {ActorLabel(ai.charaData)} -> skip dontTouch");
+                                    continue;
+                                }
+                                Consider(ai.charaData);
+                            }
                         }
                     }
                 }
@@ -207,23 +300,24 @@ namespace SVS_HInviteTweaks
 
                 bool relationshipOk;
                 string rule;
-                if (virtue >= 2)
-                {
-                    relationshipOk = lover && love >= 20;
-                    rule = "virtue>=2: lover & love>=20";
-                }
-                else if (virtue == 1)
-                {
-                    relationshipOk = love >= 15 || friend >= 20;
-                    rule = "virtue=1: love>=15 | friend>=20";
-                }
-                else if (virtue == 0)
-                {
+
+                // High; Very High
+                if (virtue >= 3) {
+                    relationshipOk = lover && love >= 21;
+                    rule = "virtue>=3: lover & love>=21";
+                // Normal
+                } else if (virtue == 2) {
+                    relationshipOk = lover || love >= 20 || friend >=20;
+                    rule = "virtue=2: lover or love>=20 or friend >=20";
+                // Low
+                } else if (virtue == 1) {
+                    relationshipOk = love >= 10 || friend >= 15;
+                    rule = "virtue=1: love>=10 | friend>=15";
+                // Lowest
+                } else if (virtue == 0) {
                     relationshipOk = love > 5 || friend > 10;
                     rule = "virtue=0: love>5 | friend>10";
-                }
-                else
-                {
+                } else {
                     relationshipOk = false;
                     rule = "virtue unknown";
                 }
@@ -233,9 +327,23 @@ namespace SVS_HInviteTweaks
                 int targetSex = target.charFile?.Parameter?.sex ?? -1;
                 bool sexOk = actorSex != 0 || targetSex != 0;
 
-                bool allowed = relationshipOk && !undressed && sexOk;
+                int actorOrientation = actor.charFile?.GameParameter?.sexualTarget ?? -1;
+                int targetOrientation = target.charFile?.GameParameter?.sexualTarget ?? -1;
+                bool OrientationCheckDisabled = Plugin.GetOrientationCheckBypass;
+                bool orientationMatching = false;
+
+                if (!OrientationCheckDisabled) {
+                    orientationMatching =
+                        IsOrientationMatches(actorOrientation,  actorSex,  targetSex) &&
+                        IsOrientationMatches(targetOrientation, targetSex, actorSex);
+                } else {
+                    orientationMatching = true;
+                }
+
+                bool allowed = relationshipOk && !undressed && sexOk && orientationMatching;
                 reason = $"virtue={virtue} love={love} friend={friend} lover={lover} [{rule}] " +
                          $"undressed={undressed} sex={actorSex}/{targetSex} sexOk={sexOk} " +
+                         $"orientation={actorOrientation}/{targetOrientation} orientationMatching={orientationMatching} " +
                          $"-> {(allowed ? "allowed" : "blocked")}";
                 return allowed;
             }
@@ -243,6 +351,25 @@ namespace SVS_HInviteTweaks
             {
                 reason = $"check failed: {ex.Message}";
                 return false;
+            }
+        }
+
+        static bool IsOrientationMatches(int orientation, int actorSex, int targetSex) {
+            bool sameSex = actorSex == targetSex;
+
+            switch (orientation) {
+                case 0: // hetero
+                    return !sameSex;
+                case 1: // leans hetero
+                    return !sameSex || Rng.Next(100) < Plugin.GetOrientationRandomChance;
+                case 2: // bisexual
+                    return true;
+                case 3: // leans homo
+                    return sameSex || Rng.Next(100) < Plugin.GetOrientationRandomChance;
+                case 4: // homo
+                    return sameSex;
+                default: // unknown -> reject
+                    return false;
             }
         }
     }
