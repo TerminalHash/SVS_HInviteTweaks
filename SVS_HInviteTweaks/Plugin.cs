@@ -39,7 +39,7 @@ namespace SVS_HInviteTweaks
 
             AggressiveVerboseLog = Config.Bind("Logging", "Aggressive debug logging", false, new ConfigDescription("More debug lines, developer-only", null, new ConfigurationManagerAttributes { IsAdvanced = true}));
 
-            SelectionChance = Config.Bind("Behavior", "NPC home H-invite chance", 25,
+            SelectionChance = Config.Bind("Behavior", "NPC home H-invite chance", 50,
                 new ConfigDescription(
                     "Chance (0-100%) to force action when it is eligible " +
                     "for the current direction. On success the returned command is replaced " +
@@ -50,7 +50,7 @@ namespace SVS_HInviteTweaks
             TargetingTypeVar = Config.Bind("Behavior", "Character Targeting Type", TargetingType.Fixed,
                 new ConfigDescription("Vanilla: Check for characters, who on map with action initiator | Fixed: Check all characters", null));
 
-            IgnoreTargetBusyState = Config.Bind("Behavior", "Ignore target busy state", false,
+            IgnoreTargetBusyState = Config.Bind("Behavior", "Ignore busy state of target", false,
                 "When enabled, target picking does not skip characters who are in contact " +
                 "(actionMode 2) or marked DontTouch (like, when they work, eating, etc.).");
 
